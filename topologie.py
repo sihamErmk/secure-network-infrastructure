@@ -1,16 +1,13 @@
 #!/usr/bin/python3
 
 from mininet.net import Mininet
-from mininet.node import Host, Node
+from mininet.node import Host, Node, OVSSwitch, Controller
 from mininet.cli import CLI
 from mininet.log import setLogLevel, info
-from mininet.topo import Topo
 
 class LinuxRouter(Node):
-    """Un nœud configuré comme un routeur IPv4"""
     def config(self, **params):
         super(LinuxRouter, self).config(**params)
-        # Activer le transfert de paquets (Forwarding)
         self.cmd('sysctl -w net.ipv4.ip_forward=1')
 
     def terminate(self):
@@ -18,70 +15,57 @@ class LinuxRouter(Node):
         super(LinuxRouter, self).terminate()
 
 def setup_network():
-    net = Mininet(topo=None, build=False, waitConnected=True)
-
-    info('*** Création des nœuds\n')
+    # Utilisation d'un contrôleur par défaut pour que les switches apprennent les adresses MAC
+    net = Mininet(topo=None, build=False, controller=Controller)
     
-    # Ajout des routeurs (Futur cluster Haute Disponibilité)
+    info('*** Ajout du contrôleur\n')
+    net.addController('c0')
+
+    info('*** Création des nœuds (Routeurs et Hôtes)\n')
+    # Routeur R1 (Principal)
     r1 = net.addHost('r1', cls=LinuxRouter, ip='10.0.1.1/24')
-    r2 = net.addHost('r2', cls=LinuxRouter, ip='10.0.1.2/24')
-
-    # Zone WAN (Internet)
-    h_wan = net.addHost('h_wan', ip='10.0.1.10/24', defaultRoute='via 10.0.1.1')
-
-    # Zone DMZ (Serveurs Web)
-    h_web = net.addHost('h_web', ip='10.0.2.10/24', defaultRoute='via 10.0.2.1')
-
-    # Zone LAN (Interne)
-    h_lan = net.addHost('h_lan', ip='10.0.3.10/24', defaultRoute='via 10.0.3.1')
     
-    # Zone Administration
+    # Hôtes par zone
+    h_wan = net.addHost('h_wan', ip='10.0.1.10/24', defaultRoute='via 10.0.1.1')
+    h_web = net.addHost('h_web', ip='10.0.2.10/24', defaultRoute='via 10.0.2.1')
+    h_lan = net.addHost('h_lan', ip='10.0.3.10/24', defaultRoute='via 10.0.3.1')
     h_admin = net.addHost('h_admin', ip='10.0.4.10/24', defaultRoute='via 10.0.4.1')
 
-    info('*** Création des commutateurs (switches)\n')
-    s_wan = net.addSwitch('s1')
-    s_dmz = net.addSwitch('s2')
-    s_lan = net.addSwitch('s3')
-    s_adm = net.addSwitch('s4')
+    info('*** Création des switches (OVS en mode standalone)\n')
+    s1 = net.addSwitch('s1', cls=OVSSwitch, failMode='standalone') # WAN
+    s2 = net.addSwitch('s2', cls=OVSSwitch, failMode='standalone') # DMZ
+    s3 = net.addSwitch('s3', cls=OVSSwitch, failMode='standalone') # LAN
+    s4 = net.addSwitch('s4', cls=OVSSwitch, failMode='standalone') # ADMIN
 
     info('*** Création des liens\n')
-    # Liens WAN
-    net.addLink(h_wan, s_wan)
-    net.addLink(r1, s_wan) # eth0 de r1
-    net.addLink(r2, s_wan) # eth0 de r2
+    # Connexions de R1 aux switches
+    net.addLink(r1, s1, intfName1='r1-eth0') # Interface WAN
+    net.addLink(r1, s2, intfName1='r1-eth1') # Interface DMZ
+    net.addLink(r1, s3, intfName1='r1-eth2') # Interface LAN
+    net.addLink(r1, s4, intfName1='r1-eth3') # Interface ADMIN
 
-    # Liens DMZ
-    net.addLink(s_dmz, r1) # eth1 de r1
-    net.addLink(s_dmz, r2) # eth1 de r2
-    net.addLink(h_web, s_dmz)
-
-    # Liens LAN
-    net.addLink(s_lan, r1) # eth2 de r1
-    net.addLink(s_lan, r2) # eth2 de r2
-    net.addLink(h_lan, s_lan)
-
-    # Liens Admin
-    net.addLink(s_adm, r1) # eth3 de r1
-    net.addLink(s_adm, r2) # eth3 de r2
-    net.addLink(h_admin, s_adm)
+    # Connexions des hôtes aux switches
+    net.addLink(h_wan, s1)
+    net.addLink(h_web, s2)
+    net.addLink(h_lan, s3)
+    net.addLink(h_admin, s4)
 
     info('*** Démarrage du réseau\n')
     net.build()
-    
-    # Configuration des interfaces IP sur les routeurs
-    # r1
-    r1.setIP('10.0.2.1/24', intf='r1-eth1')
-    r1.setIP('10.0.3.1/24', intf='r1-eth2')
-    r1.setIP('10.0.4.1/24', intf='r1-eth3')
-    
-    # r2
-    r2.setIP('10.0.2.2/24', intf='r2-eth1')
-    r2.setIP('10.0.3.2/24', intf='r2-eth2')
-    r2.setIP('10.0.4.2/24', intf='r2-eth3')
+    net.start()
 
-    info('*** Réseau prêt. Test de connectivité de base...\n')
-    # Note: h_wan ping r1 sur son interface WAN
-    net.ping([h_wan, r1])
+    info('*** Configuration manuelle des IP sur le routeur R1\n')
+    r1.cmd('ip addr add 10.0.2.1/24 dev r1-eth1')
+    r1.cmd('ip addr add 10.0.3.1/24 dev r1-eth2')
+    r1.cmd('ip addr add 10.0.4.1/24 dev r1-eth3')
+    
+    # On force l'activation de toutes les interfaces de r1
+    for i in range(4):
+        r1.cmd(f'ip link set r1-eth{i} up')
+
+    info('*** Vérification de la connectivité LAN -> Routeur\n')
+    # Test : h_lan (10.0.3.10) ping sa passerelle (10.0.3.1)
+    print(net.get('h_lan').cmd('ping -c 3 10.0.3.1'))
 
     CLI(net)
     net.stop()
