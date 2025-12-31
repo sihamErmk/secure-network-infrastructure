@@ -74,4 +74,4 @@ def setup_network():
 
 if __name__ == '__main__':
     setLogLevel('info')
-    setup_network()
+    setup_network()   
