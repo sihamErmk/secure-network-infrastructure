@@ -20,3 +20,11 @@ iptables -A FORWARD -i fw1-eth2 -o fw1-eth0 -p tcp --dport 443 -j ACCEPT
 
 # 6. Logging
 iptables -A FORWARD -j LOG --log-prefix "ZPF-BLOCK: "
+
+
+
+# Autoriser le trafic VPN (UDP 1194) du WAN vers le serveur VPN
+iptables -A FORWARD -i fw1-eth0 -o fw1-eth3 -p udp --dport 1194 -j ACCEPT
+
+# Autoriser le trafic venant du tunnel VPN (10.8.0.0/24) vers le LAN
+iptables -A FORWARD -s 10.8.0.0/24 -d 10.0.2.0/24 -j ACCEPT
