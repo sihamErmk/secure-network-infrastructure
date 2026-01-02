@@ -1,38 +1,25 @@
 #!/bin/bash
-# Configuration Apache + SSL sur h_dmz
+# setup_dmz_python.sh - Configuration et lancement du service Web
 
-# 1. Nettoyage et Dossiers
-service apache2 stop
-mkdir -p /etc/ssl/private /etc/ssl/certs
+echo "[*] Initialisation du service DMZ..."
 
-# 2. Génération Certificat SSL
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/ssl/private/apache.key -out /etc/ssl/certs/apache.crt \
-    -subj "/C=FR/O=LSI3/CN=10.0.1.2"
+# 1. Vérification/Génération des certificats
+if [ ! -f "certs/server.crt" ]; then
+    echo "[!] Certificats manquants. Appel de generate_ssl.sh..."
+    bash generate_ssl.sh
+fi
 
-# 3. Correction du fichier ports (TRÈS IMPORTANT)
-printf "Listen 80\nListen 443\n" > /etc/apache2/ports.conf
+# 2. Création d'une page d'accueil de test
+echo "<html><body><h1>Zone Demilitarisee (DMZ) Securisee</h1><p>Modele Zero Trust - LSI3</p></body></html>" > index.html
 
-# 4. Config VirtualHost HTTPS
-cat <<EOF > /etc/apache2/sites-available/default-ssl.conf
-<VirtualHost *:443>
-    DocumentRoot /var/www/html
-    SSLEngine on
-    SSLCertificateFile /etc/ssl/certs/apache.crt
-    SSLCertificateKeyFile /etc/ssl/private/apache.key
-</VirtualHost>
-EOF
+# 3. Arrêt des anciens processus Python ou Apache pour libérer les ports
+fuser -k 80/tcp 2>/dev/null
+fuser -k 443/tcp 2>/dev/null
 
-# 5. Config Redirection HTTP -> HTTPS
-cat <<EOF > /etc/apache2/sites-available/000-default.conf
-<VirtualHost *:80>
-    Redirect permanent / https://10.0.1.2/
-</VirtualHost>
-EOF
+# 4. Lancement du serveur Python (secure_server.py)
+# On utilise nohup pour qu'il continue de tourner en arrière-plan
+echo "[*] Lancement du serveur Web Python (HTTPS + Redirection)..."
+nohup python3 secure_server.py > server.log 2>&1 &
 
-# 6. Activation modules et site
-a2enmod ssl rewrite > /dev/null
-a2ensite default-ssl 000-default > /dev/null
-
-# 7. Redémarrage
-service apache2 restart
+echo "[OK] Le serveur tourne. PID: $!"
+echo "[i] Consultez server.log pour voir les connexions."
