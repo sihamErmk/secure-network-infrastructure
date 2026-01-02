@@ -1,9 +1,12 @@
 #!/bin/bash
-# vpn_server_setup.sh - À lancer sur h_vpn
+# vpn_server.sh
 
-echo "[*] Configuration du serveur OpenVPN sur h_vpn..."
+echo "[*] Préparation du périphérique TUN sur h_vpn..."
+mkdir -p /dev/net
+mknod /dev/net/tun c 10 200
+chmod 600 /dev/net/tun
 
-# Création du fichier de config OpenVPN
+echo "[*] Création de la configuration serveur..."
 cat <<EOF > server.conf
 dev tun
 proto udp
@@ -13,16 +16,17 @@ cert certs/server.crt
 key certs/server.key
 dh certs/dh2048.pem
 server 10.8.0.0 255.255.255.0
-push "route 10.0.2.0 255.255.255.0"
 topology subnet
-client-to-client
-keepalive 10 120
+push "route 10.0.2.0 255.255.255.0"
 cipher AES-256-CBC
+verb 3
+keepalive 10 120
 persist-key
 persist-tun
-verb 3
 EOF
 
-# Activation du routage sur le serveur VPN
-sysctl -w net.ipv4.ip_forward=1
-echo "[OK] Serveur VPN prêt (Config générée)."
+echo "[*] Démarrage du serveur OpenVPN..."
+openvpn --config server.conf --daemon --log vpn_server.log
+sleep 2
+echo "[OK] Log disponible dans vpn_server.log"
+ip addr show tun0
