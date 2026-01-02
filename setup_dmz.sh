@@ -19,7 +19,7 @@ fuser -k 443/tcp 2>/dev/null
 # 4. Lancement du serveur Python (secure_server.py)
 # On utilise nohup pour qu'il continue de tourner en arrière-plan
 echo "[*] Lancement du serveur Web Python (HTTPS + Redirection)..."
-nohup python3 secure_server.py > server.log 2>&1 &
+nohup python3 sec.py > server.log 2>&1 &
 
 echo "[OK] Le serveur tourne. PID: $!"
 echo "[i] Consultez server.log pour voir les connexions."
