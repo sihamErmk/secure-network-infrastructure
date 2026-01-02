@@ -1,36 +1,59 @@
-#!/bin/bash
+#!/usr/bin/python3
+from mininet.net import Mininet
+from mininet.node import Node, OVSSwitch
+from mininet.cli import CLI
+from mininet.log import setLogLevel, info
 
-# 1. Installation (si pas déjà fait)
-#apt update && apt install apache2 openssl -y
+class LinuxRouter(Node):
+    def config(self, **params):
+        super(LinuxRouter, self).config(**params)
+        self.cmd('sysctl -w net.ipv4.ip_forward=1')
+    def terminate(self):
+        self.cmd('sysctl -w net.ipv4.ip_forward=0')
+        super(LinuxRouter, self).terminate()
 
-# 2. Création du dossier SSL et génération du certificat auto-signé
-echo "[*] Génération du certificat SSL..."
-mkdir -p /etc/ssl/private
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/ssl/private/apache.key \
-    -out /etc/ssl/certs/apache.crt \
-    -subj "/C=FR/ST=Paris/L=Paris/O=LSI3/CN=10.0.1.2"
+def run_topo():
+    net = Mininet(topo=None, build=False, controller=None)
 
-# 3. Configuration du site SSL d'Apache
-echo "[*] Configuration d'Apache HTTPS..."
-# On met à jour les chemins des certificats dans la config par défaut
-sed -i 's|/etc/ssl/certs/ssl-cert-snakeoil.pem|/etc/ssl/certs/apache.crt|g' /etc/apache2/sites-available/default-ssl.conf
-sed -i 's|/etc/ssl/private/ssl-cert-snakeoil.key|/etc/ssl/private/apache.key|g' /etc/apache2/sites-available/default-ssl.conf
+    info('*** Création du Pare-feu (fw)\n')
+    fw = net.addHost('fw', cls=LinuxRouter, ip='10.0.0.1/24')
 
-# 4. Activation des modules et du site
-a2enmod ssl > /dev/null
-a2enmod rewrite > /dev/null
-a2ensite default-ssl > /dev/null
+    info('*** Création des hôtes et zones\n')
+    h_wan = net.addHost('h_wan', ip='10.0.0.2/24', defaultRoute='via 10.0.0.1')
+    h_dmz = net.addHost('h_dmz', ip='10.0.1.2/24', defaultRoute='via 10.0.1.1')
+    h_lan = net.addHost('h_lan', ip='10.0.2.2/24', defaultRoute='via 10.0.2.1')
+    h_vpn = net.addHost('h_vpn', ip='10.0.3.2/24', defaultRoute='via 10.0.3.1')
+    h_adm = net.addHost('h_adm', ip='10.0.4.2/24', defaultRoute='via 10.0.4.1')
 
-# 5. Configuration de la redirection HTTP (80) -> HTTPS (443)
-# On modifie le VirtualHost 80 pour rediriger
-cat <<EOF > /etc/apache2/sites-available/000-default.conf
-<VirtualHost *:80>
-    ServerName 10.0.1.2
-    Redirect permanent / https://10.0.1.2/
-</VirtualHost>
-EOF
+    # Switches
+    s_wan, s_dmz, s_lan, s_vpn, s_adm = [net.addSwitch(s, cls=OVSSwitch, failMode='standalone') for s in ['s1','s2','s3','s4','s5']]
 
-# 6. Redémarrage du service
-service apache2 restart
-echo "[OK] Serveur DMZ configuré en HTTPS (10.0.1.2)"
+    # Liens
+    net.addLink(fw, s_wan, intfName1='fw-eth0')
+    net.addLink(fw, s_dmz, intfName1='fw-eth1')
+    net.addLink(fw, s_lan, intfName1='fw-eth2')
+    net.addLink(fw, s_vpn, intfName1='fw-eth3')
+    net.addLink(fw, s_adm, intfName1='fw-eth4')
+    
+    net.addLink(h_wan, s_wan)
+    net.addLink(h_dmz, s_dmz)
+    net.addLink(h_lan, s_lan)
+    net.addLink(h_vpn, s_vpn)
+    net.addLink(h_adm, s_adm)
+
+    net.build()
+    net.start()
+
+    # IPs supplémentaires sur le routeur
+    fw.cmd('ip addr add 10.0.1.1/24 dev fw-eth1')
+    fw.cmd('ip addr add 10.0.2.1/24 dev fw-eth2')
+    fw.cmd('ip addr add 10.0.3.1/24 dev fw-eth3')
+    fw.cmd('ip addr add 10.0.4.1/24 dev fw-eth4')
+
+    info('*** Réseau prêt. Utilisez "fw bash firewall.sh" et "h_dmz bash setup_dmz.sh" ***\n')
+    CLI(net)
+    net.stop()
+
+if __name__ == '__main__':
+    setLogLevel('info')
+    run_topo()
