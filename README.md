@@ -1,12 +1,10 @@
 # 🛡️ Secure Network Infrastructure (Zero Trust Implementation)
 
-Ce projet consiste à concevoir, simuler et analyser une infrastructure réseau critique sécurisée en suivant le modèle **Zero Trust**. L'architecture est émulée sous **Mininet** et intègre des mécanismes avancés de segmentation, chiffrement et détection d'intrusion.
-
----
+Ce projet implémente une infrastructure réseau sécurisée basée sur le modèle **Zero Trust** au sein d'un environnement simulé **Mininet**. L'architecture intègre des mécanismes avancés de segmentation, chiffrement et détection d'intrusion.
 
 ## 📂 Structure du Projet
 
-```text
+```
 .
 ├── topologie.py       # Définition du réseau (5 zones + Cluster HA)
 ├── firewall.sh        # Règles IPTables (Zone-Based Firewall)
@@ -16,77 +14,112 @@ Ce projet consiste à concevoir, simuler et analyser une infrastructure réseau 
 ├── vpn_gencert.sh     # Génération de la PKI pour le VPN
 ├── vpn_server.sh      # Configuration & Lancement du serveur VPN (h_vpn)
 └── vpn_client.sh      # Configuration & Lancement du client VPN (h_wan)
-🛠️ Préparation de l'environnement
-1. Cloner le projet
-Ouvrez votre terminal et récupérez le dépôt :
-code
-Bash
+```
+
+## 🛠️ Préparation de l'environnement
+
+### 1. Cloner le projet
+
+```bash
 git clone https://github.com/sihamErmk/secure-network-infrastructure.git
 cd secure-network-infrastructure
-2. Permissions et Dépendances
-Rendez les scripts exécutables et installez les outils nécessaires :
-code
-Bash
+```
+
+### 2. Permissions et Dépendances
+
+```bash
 chmod +x *.sh topologie.py
 sudo apt-get update && sudo apt-get install -y mininet openvswitch-switch openssl openvpn curl iptables snort
-🚀 Guide d'Utilisation & Validation
-Suivez les étapes dans l'ordre pour configurer l'infrastructure.
-Étape 1 : Lancer la Topologie
-Démarrez le réseau virtuel Mininet :
-code
-Bash
+```
+
+## 🚀 Guide d'Utilisation & Tests de Validation
+
+### 1. Lancer la Topologie
+
+```bash
 sudo python3 topologie.py
-Résultat attendu : La console mininet> s'affiche. Tapez nodes pour voir : fw1, fw2, h_wan, h_dmz, h_lan, h_vpn, h_adm.
-Étape 2 : Configurer le Pare-feu (Zero Trust)
-Appliquez les politiques de filtrage sur le routeur central :
-code
-Bash
+```
+
+**Test :** `mininet> nodes`  
+**Résultat attendu :** Affichage de `fw1, fw2, h_wan, h_dmz, h_lan, h_vpn, h_adm`
+
+### 2. Configurer le Pare-feu (fw1)
+
+```bash
 mininet> fw1 bash firewall.sh
-Test : mininet> h_wan ping -c 2 10.0.2.2
-Résultat attendu : 100% packet loss. L'isolation est active.
-Étape 3 : Déployer la DMZ Sécurisée
-Lancez le serveur Web HTTPS sur l'hôte DMZ :
-code
-Bash
+```
+
+**Test :** `mininet> h_wan ping -c 2 10.0.2.2` (WAN vers LAN)  
+**Résultat attendu :** `100% packet loss` (Preuve que le Zero Trust bloque tout accès non autorisé)
+
+### 3. Déployer la DMZ Sécurisée (h_dmz)
+
+```bash
 mininet> h_dmz bash setup_dmz.sh
-Test Redirection : mininet> h_wan curl -I http://10.0.1.2 ➡️ 301 Moved Permanently
-Test HTTPS : mininet> h_wan curl -k https://10.0.1.2 ➡️ Affiche le contenu HTML
-Étape 4 : Établir l'Accès distant (VPN)
-Configurez le tunnel chiffré entre le WAN et le réseau interne :
-code
-Bash
+```
+
+**Test A (Redirection) :** `mininet> h_wan curl -I http://10.0.1.2`  
+**Résultat attendu :** `HTTP/1.0 301 Moved Permanently` (Redirection vers HTTPS)
+
+**Test B (HTTPS) :** `mininet> h_wan curl -k https://10.0.1.2`  
+**Résultat attendu :** Affichage du code HTML : `<h1>Zone Demilitarisee (DMZ) Securisee</h1>`
+
+### 4. Établir l'Accès Distant (VPN)
+
+```bash
 mininet> h_vpn bash vpn_gencert.sh
 mininet> h_vpn bash vpn_server.sh
 mininet> h_wan bash vpn_client.sh
-Test Tunnel : mininet> h_wan ping -c 2 10.8.0.1 ➡️ 0% packet loss.
-Étape 5 : Administration SSH sécurisée
-Configuration de l'accès SSH par clé publique sur l'hôte LAN :
-code
-Bash
-# Générer la clé sur h_adm
+```
+
+**Test A (Interface) :** `mininet> h_wan ip addr show tun0`  
+**Résultat attendu :** Une interface `tun0` apparaît avec l'IP `10.8.0.2`
+
+**Test B (Tunnel) :** `mininet> h_wan ping -c 2 10.8.0.1`  
+**Résultat attendu :** `0% packet loss` (Le tunnel est fonctionnel)
+
+### 5. Administration SSH Sécurisée (h_lan)
+
+```bash
+# Générer la clé sur l'admin
 mininet> h_adm ssh-keygen -t rsa -N "" -f /root/.ssh/id_rsa
-# Déployer la clé sur h_lan
+
+# Transférer la clé sur h_lan
 mininet> h_adm cat /root/.ssh/id_rsa.pub | h_lan bash -c "mkdir -p /root/.ssh && cat >> /root/.ssh/authorized_keys"
-Test : mininet> h_adm ssh 10.0.2.2 ➡️ Accès autorisé sans mot de passe.
-Étape 6 : Détection d'Intrusion (Snort)
-Surveillez le trafic en temps réel sur l'interface WAN du pare-feu :
-code
-Bash
+```
+
+**Test A (Sécurité) :** `mininet> h_dmz ssh 10.0.2.2` (Depuis une zone non autorisée)  
+**Résultat attendu :** `Permission denied (publickey)` ou timeout
+
+**Test B (Connexion) :** `mininet> h_adm ssh 10.0.2.2`  
+**Résultat attendu :** Accès direct au shell de `h_lan` sans demander de mot de passe
+
+### 6. Détection d'Intrusion (Snort)
+
+```bash
 mininet> fw1 snort -A console -q -c /etc/snort/snort.conf -i fw1-eth0
-Test : Faites un curl ou un ping depuis h_wan.
-Résultat attendu : Des alertes s'affichent sur la console de fw1.
-📊 Tableau Récapitulatif des Tests
-Fonctionnalité	Commande de validation	État	Résultat Attendu
-Segmentation	h_wan ping 10.0.2.2	🔒	Bloqué (Policy DROP)
-Chiffrement	h_wan curl -k https://10.0.1.2	🔑	Succès (TLS 1.3)
-Redirection	h_wan curl -I http://10.0.1.2	🔄	Redirect 301
-Accès distant	h_wan ping 10.8.0.1	🛡️	Succès (Via tun0)
-Auth. SSH	h_adm ssh 10.0.2.2	🎟️	Succès (Key only)
-Détection	Console Snort	👁️	Alertes en temps réel
-🧹 Nettoyage
-Pour quitter Mininet et réinitialiser les réglages réseau :
-code
-Bash
+```
+
+**Test :** Dans un autre terminal, faites `mininet> h_wan curl -k https://10.0.1.2`  
+**Résultat attendu :** Une alerte s'affiche sur la console de fw1 : `[IDS] Flux HTTPS DMZ detecte`
+
+## 📊 Résumé des Preuves pour le Rapport
+
+| Service | Commande de preuve | Validation |
+|---------|-------------------|------------|
+| Zéro Trust | `ping 10.0.2.2` | Échec (Isolation confirmée) |
+| HTTPS | `curl -k https://10.0.1.2` | Succès (Chiffrement validé) |
+| VPN | `ping 10.8.0.1` | Succès (Tunnel opérationnel) |
+| SSH | `ssh 10.0.2.2` | Succès (Clé publique validée) |
+| IDS | Console fw1 | Alertes visibles (Détection validée) |
+
+## 🧹 Nettoyage
+
+```bash
 mininet> exit
 sudo mn -c
-👨‍💻 Projet LSI3 - 2025/2026
+```
+
+---
+
+**Projet LSI3 - 2025/2026**
