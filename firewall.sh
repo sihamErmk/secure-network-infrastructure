@@ -8,7 +8,7 @@ iptables -X
 iptables -P INPUT DROP
 iptables -P FORWARD DROP
 iptables -P OUTPUT ACCEPT
-
+ip route add 10.8.0.0/24 via 10.0.3.2 2>/dev/null
 # 2. Stateful Inspection (Indispensable pour autoriser les réponses)
 iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT

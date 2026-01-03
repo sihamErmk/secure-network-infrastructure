@@ -25,6 +25,9 @@ persist-key
 persist-tun
 EOF
 
+# Activer le routage interne à h_vpn
+sysctl -w net.ipv4.ip_forward=1
+
 echo "[*] Démarrage du serveur OpenVPN..."
 openvpn --config server.conf --daemon --log vpn_server.log
 sleep 2
