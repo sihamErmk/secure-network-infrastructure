@@ -27,7 +27,12 @@ iptables -A FORWARD -i fw1-eth0 -o fw1-eth3 -p udp -d 10.0.3.2 --dport 1194 -j A
 # 5. FLUX À L'INTÉRIEUR DU TUNNEL (Admin distant)
 # Une fois le tunnel monté, le trafic vient de 10.8.0.0/24 via l'interface eth3
 echo "[*] Autorisation Admin VPN -> LAN (SSH)"
-iptables -A FORWARD -i fw1-eth3 -s 10.8.0.0/24 -d 10.0.2.2 -p tcp --dport 22 -j ACCEPT
+# Autoriser le VPN vers LAN/DMZ pour tous les protocoles (test)
+iptables -A FORWARD -i fw1-eth3 -s 10.8.0.0/24 -d 10.0.2.0/24 -j ACCEPT
+iptables -A FORWARD -i fw1-eth3 -s 10.8.0.0/24 -d 10.0.1.0/24 -j ACCEPT
+
+# Autoriser le retour (stateful)
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # 6. ADMINISTRATION LOCALE (Zone ADM)
 # Autoriser SSH direct de l'administrateur local vers le LAN et la DMZ

@@ -27,7 +27,10 @@ EOF
 
 # Activer le routage interne à h_vpn
 sysctl -w net.ipv4.ip_forward=1
-
+# Pousser les routes LAN et DMZ vers les clients VPN
+push "route 10.0.2.0 255.255.255.0"   # LAN
+push "route 10.0.1.0 255.255.255.0"   # DMZ
+push "route 10.0.4.0 255.255.255.0"   # ADM si nécessaire
 echo "[*] Démarrage du serveur OpenVPN..."
 openvpn --config server.conf --daemon --log vpn_server.log
 sleep 2
